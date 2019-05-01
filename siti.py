@@ -21,12 +21,12 @@ def siti(filename: str, output: str = '', size: str = '0x0', pix_fmt: str = 'yuv
     :param inputdict: A dict to ffmpeg backend.
     :return: None
     """
-    print(f'Calculating SI/TI for {params["video"]}.')
+    print(f'Calculating SI/TI for {filename}.')
     frame_counter = 0
     [width, height] = list(map(int, size.split('x')))
     if output in '':
         output = '.'.join(filename.split('.')[:-1]) + '.csv'  # Remove extension
-    if form not in '':
+    if form not in '' and inputdict is None:
         inputdict = {"-s": f"{width}x{height}", "-pix_fmt": pix_fmt, '-f': form}
 
     measures = {'SI': Si(), 'TI': Ti()}
@@ -34,8 +34,8 @@ def siti(filename: str, output: str = '', size: str = '0x0', pix_fmt: str = 'yuv
     video = skvideo.io.vreader(fname=filename, inputdict=inputdict, as_grey=True, num_frames=num_frames)
 
     for frame in video:
-        print(f"\nframe {frame_counter} of video {video}")
         frame_counter += 1
+        print(f"\nframe {frame_counter} of video {video}")
         frame = frame.reshape((height, width)).astype('float32')
 
         for measure in measures:
@@ -67,7 +67,7 @@ class Si(Features):
         soby = ndimage.sobel(frame, axis=1)
         sob = np.hypot(sobx, soby)
         sob_std = sob.std()
-        si = round(sob_std, 4)
+        si = sob_std
         self.values.append(si)
         # plt.imshow(frame, cmap='gray');plt.show()
         # plt.imshow(sob, cmap='gray');plt.show()
@@ -86,7 +86,7 @@ class Ti(Features):
 
         if self.previous_frame is not None:
             difference = frame - self.previous_frame
-            ti = round(difference.std(), 4)
+            ti = difference.std()
             # plt.imshow(np.abs(difference), cmap='gray');plt.show()
             # plt.savefig('temp\\frame' + str(self.frame_counter) + '_diff', dpi=150, cmap='gray')
 
@@ -102,11 +102,11 @@ if __name__ == "__main__":
     # argument parsing
     parser = argparse.ArgumentParser(description='Calculate SI/TI according ITU-T P.910',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("video", type=str, help="Video to analyze")
+    parser.add_argument("filename", type=str, help="Video to analyze")
     parser.add_argument('--size', type=str, default='0x0', help='Dimensions in pixels')
     parser.add_argument('--num_frames', type=int, default=0, help='Process number of frames')
     parser.add_argument("--output", type=str, default="", help="Output CSV for si ti report")
-    parser.add_argument("--format", type=str, default="", help="Force ffmpeg video format")
+    parser.add_argument("--form", type=str, default="", help="Force ffmpeg video format")
     parser.add_argument("--pix_fmt", type=str, default="yuv420p", help="force ffmpeg pixel format")
     params = vars(parser.parse_args())
 
