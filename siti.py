@@ -36,7 +36,7 @@ def siti(filename: str, output: str = '', size: str = '0x0', pix_fmt: str = 'yuv
     for frame in video:
         print(f"\nframe {frame_counter} of video {video}")
         frame_counter += 1
-        frame = frame.reshape((height, width)).astype('float64')
+        frame = frame.reshape((height, width)).astype('float32')
 
         for measure in measures:
             value = measures[measure].calc(frame)
