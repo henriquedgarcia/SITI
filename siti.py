@@ -6,6 +6,7 @@ import pandas as pd
 import skvideo.io
 from scipy import ndimage
 import matplotlib.pyplot as plt
+import glob
 
 
 def siti(filename: str, output: str = '', size: str = '0x0', pix_fmt: str = 'yuv420p', form: str = None,
@@ -98,6 +99,51 @@ class Ti(Features):
         return ti
 
 
+def multi_plot(input_glob='*.csv'):
+    names = {}
+
+    # For each file plot
+    for x in glob.glob(input_glob):
+        name = x.replace(f'.{input_glob.split(".")[-1]}', '')
+        tmp = pd.read_csv(x, delimiter=',')
+        names[name] = [tmp['si'].max(),
+                       tmp['ti'].max(),
+                       tmp['si'].mean(),
+                       tmp['ti'].mean(),
+                       tmp['si'].median(),
+                       tmp['ti'].median()]
+
+        fig, ax = plt.subplots(figsize=(9, 5), tight_layout=True, dpi=300)
+        ax.plot(tmp['si'], label='si')
+        ax.plot(tmp['ti'], label='ti')
+        ax.set_xlabel('Frame')
+        ax.set_ylabel('Information')
+        ax.set_title(name)
+        ax.legend(loc='upper left', bbox_to_anchor=(1.01, 0.99))
+        plt.show()
+        fig.savefig(name)
+
+    # A geral plot
+    fig, [ax_max, ax_avg, ax_med] = plt.subplots(1, 3, figsize=(18, 5), tight_layout=True, dpi=200)
+    for name in names:
+        ax_max.scatter(names[name][0], names[name][1], label=name)
+        ax_avg.scatter(names[name][2], names[name][3], label=name)
+        ax_med.scatter(names[name][4], names[name][5], label=name)
+
+    ax_max.set_xlabel('SI')
+    ax_max.set_ylabel('TI')
+    ax_max.set_title('SI/TI - Max Values')
+    ax_avg.set_xlabel('SI')
+    ax_avg.set_ylabel('TI')
+    ax_avg.set_title('SI/TI - Average Values')
+    ax_med.set_xlabel('SI')
+    ax_med.set_ylabel('TI')
+    ax_med.set_title('SI/TI - Median Values')
+    ax_med.legend(loc='upper left', bbox_to_anchor=(1.01, 0.99))
+    # plt.show()
+    fig.savefig('scatter_siti')
+
+
 if __name__ == "__main__":
     # argument parsing
     parser = argparse.ArgumentParser(description='Calculate SI/TI according ITU-T P.910',
@@ -111,3 +157,4 @@ if __name__ == "__main__":
     params = vars(parser.parse_args())
 
     siti(**params)
+    multi_plot(params['output'])
