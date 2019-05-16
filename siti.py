@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 
 import argparse
+import platform
 import numpy as np
 import pandas as pd
 import skvideo.io
 from scipy import ndimage
 import matplotlib.pyplot as plt
 import glob
+
+if platform.system() == 'Windows':
+    sl = '\\'
+else:
+    sl = '/'
 
 
 def siti(filename: str, output: str = '', size: str = '0x0', pix_fmt: str = 'yuv420p', form: str = None,
