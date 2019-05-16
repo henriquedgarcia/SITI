@@ -107,17 +107,37 @@ class Ti(Features):
 
 def multi_plot(input_glob='*.csv'):
     names = {}
+    for x in glob.glob(input_glob):
+        name = x.replace(f'.{input_glob.split(".")[-1]}', '').split(f'{sl}')[-1]
+        tmp = pd.read_csv(x, delimiter=',')
 
-    # For each file plot
+        names[name] = dict(si_med=tmp['si'].median(),
+                           ti_med=tmp['ti'].median(),
+                           yerr=np.array([[np.percentile(tmp['ti'], 25)], [np.percentile(tmp['ti'], 75)]]),
+                           xerr=np.array([[np.percentile(tmp['si'], 25)], [np.percentile(tmp['si'], 75)]]))
+
+    fig, ax_med = plt.subplots(1, 1, figsize=(10, 5), tight_layout=True, dpi=200)
+
+    for name in names:
+        yerr = names[name]['yerr']
+        xerr = names[name]['xerr']
+        x = names[name]['si_med']
+        y = names[name]['ti_med']
+        ax_med.errorbar(x=x, y=y, label=name, yerr=np.abs(yerr - y), xerr=np.abs(xerr - x), fmt='o')
+
+    ax_med.set_xlabel('SI')
+    ax_med.set_ylabel('TI')
+    ax_med.set_title('SI/TI - Median Values')
+    ax_med.legend(loc='upper left', bbox_to_anchor=(1.01, 0.99))
+
+    # plt.show()
+    fig.savefig(f'graphs{sl}scatter-err_siti')
+
+
+def single_plot(input_glob='*.csv'):
     for x in glob.glob(input_glob):
         name = x.replace(f'.{input_glob.split(".")[-1]}', '')
         tmp = pd.read_csv(x, delimiter=',')
-        names[name] = [tmp['si'].max(),
-                       tmp['ti'].max(),
-                       tmp['si'].mean(),
-                       tmp['ti'].mean(),
-                       tmp['si'].median(),
-                       tmp['ti'].median()]
 
         fig, ax = plt.subplots(figsize=(9, 5), tight_layout=True, dpi=300)
         ax.plot(tmp['si'], label='si')
@@ -126,32 +146,11 @@ def multi_plot(input_glob='*.csv'):
         ax.set_ylabel('Information')
         ax.set_title(name)
         ax.legend(loc='upper left', bbox_to_anchor=(1.01, 0.99))
-        plt.show()
+        # plt.show()
         fig.savefig(name)
-
-    # A geral plot
-    fig, [ax_max, ax_avg, ax_med] = plt.subplots(1, 3, figsize=(18, 5), tight_layout=True, dpi=200)
-    for name in names:
-        ax_max.scatter(names[name][0], names[name][1], label=name)
-        ax_avg.scatter(names[name][2], names[name][3], label=name)
-        ax_med.scatter(names[name][4], names[name][5], label=name)
-
-    ax_max.set_xlabel('SI')
-    ax_max.set_ylabel('TI')
-    ax_max.set_title('SI/TI - Max Values')
-    ax_avg.set_xlabel('SI')
-    ax_avg.set_ylabel('TI')
-    ax_avg.set_title('SI/TI - Average Values')
-    ax_med.set_xlabel('SI')
-    ax_med.set_ylabel('TI')
-    ax_med.set_title('SI/TI - Median Values')
-    ax_med.legend(loc='upper left', bbox_to_anchor=(1.01, 0.99))
-    # plt.show()
-    fig.savefig('scatter_siti')
 
 
 if __name__ == "__main__":
-    # argument parsing
     parser = argparse.ArgumentParser(description='Calculate SI/TI according ITU-T P.910',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("filename", type=str, help="Video to analyze")
