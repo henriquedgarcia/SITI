@@ -1,165 +1,198 @@
 #!/usr/bin/env python3
-
 import argparse
-import platform
+
 import numpy as np
 import pandas as pd
 import skvideo.io
 from scipy import ndimage
-import matplotlib.pyplot as plt
-import glob
-
-if platform.system() == 'Windows':
-    sl = '\\'
-else:
-    sl = '/'
+import os
 
 
-def siti(filename: str, output: str = '', size: str = '0x0', pix_fmt: str = 'yuv420p', form: str = None,
-         num_frames: int = 0, inputdict: dict = None) -> bool:
+class SiTi:
     """
-    Python script to calculate SI/TI according recommendation ITU-T P.910.
-    :param filename: Filename of video.
-    :param output: CSV name to salve.
-    :param size: Video dimension in "MxN" pixels.
-    :param pix_fmt: Force pixel format to ffmpeg style.
-    :param form: Force video format to ffmpeg style.
-    :param num_frames: Number of frames to process.
-    :param inputdict: A dict to ffmpeg backend.
-    :return: None
+    Calcule the Spatial information and Temporal information according
+    ITU-T P.910, but using median instead of the maximum value. In the
+    recommendation, the SI/TI for the video is the maximum value. But, for long
+    videos the values vary a lot. In this way, the median will represent that
+    half of frame values are below and half will be above.
+
+    The Spatial Information.
+    The spatial information is based on the Sobel Filter on the luminance
+    frame. For each frame (time dimension) filtered with the Sobel filter, the
+    standard deviation is computed (space dimension). The Spatial Information
+    for the video is the median of the all frames. On the ITU-T P.910
+    recommendation the max value is used. So, large variations in luminance will
+    generate higher values for SI.
+
+    SI = median_time(std_space(sobel(Frame_n)))
+
+    The Temporal Information
+    The temporal information is based on the motion difference. For each
+    luminance frame pair (n, n+1) the difference is computed and the Standard
+    Deviation is calculated. The Temporal Information is the Median of the all
+    frames. On the ITU-T P.910 recommendation the max value is used. So, large
+    variations in movement (large differences between frames) will produce
+    larger TI.
+
+    TI = median_time(std_space(difference(Frame_n, Frame_n-1)))
+
+
     """
-    print(f'Calculating SI/TI for {filename}.')
-    frame_counter = 0
-    [width, height] = list(map(int, size.split('x')))
-    if output in '':
-        output = '.'.join(filename.split('.')[:-1]) + '.csv'  # Remove extension
-    if form not in '' and inputdict is None:
-        inputdict = {"-s": f"{width}x{height}", "-pix_fmt": pix_fmt, '-f': form}
 
-    measures = {'SI': Si(), 'TI': Ti()}
+    def __init__(self, filename, scale, format=None, pix_fmt=None):
+        """
 
-    video = skvideo.io.vreader(fname=filename, inputdict=inputdict, as_grey=True, num_frames=num_frames)
+        :param filename: The filename of video in path-like format.
+        :param scale: The frame dimension in string format. e.g.: "640x480".
+        :param format: force ffmpeg format. E.g.: "yuv", "mp4", "hevc", etc. See
+        "ffmpeg -formats".
+        :param pix_fmt: force ffmpeg pixel format. E.g.: "yuv420p", "yuv444p",
+        "rgb8", etc.
+        """
+        self.filename = filename
+        self.scale = scale
+        self.width, self.height = tuple(map(int, scale.split('x')))
 
-    for frame in video:
-        frame_counter += 1
-        print(f"\nframe {frame_counter} of video {video}")
-        frame = frame.reshape((height, width)).astype('float32')
-
-        for measure in measures:
-            value = measures[measure].calc(frame)
-            print(f"{measure} -> {value}")
-
-    df = pd.DataFrame()
-    df["frame"] = range(1, measures['SI'].frame_counter + 1)
-    df['SI'] = measures['SI'].values
-    df['TI'] = measures['TI'].values
-    df.to_csv(output, index=False)
-
-    return True
-
-
-class Features:
-    def __init__(self):
-        self.values = []
+        self.si = []
+        self.ti = []
+        self.previous_frame = None
         self.frame_counter = 0
 
-    def calc(self, frame):
-        raise NotImplementedError("not implemented")
+        self.inputdict = {'-s': f'{self.scale}'}
 
+        if format:
+            self.inputdict["-f"] = form
+        if pix_fmt:
+            self.inputdict["-pix_fmt"] = pix_fmt
 
-class Si(Features):
-    def calc(self, frame):
-        self.frame_counter += 1
+    @staticmethod
+    def sobel(frame):
+        """
+        Apply 1st order 2D Sobel filter
+        :param frame:
+        :return:
+        """
         sobx = ndimage.sobel(frame, axis=0)
         soby = ndimage.sobel(frame, axis=1)
         sob = np.hypot(sobx, soby)
-        sob_std = sob.std()
-        si = sob_std
-        self.values.append(si)
-        # plt.imshow(frame, cmap='gray');plt.show()
-        # plt.imshow(sob, cmap='gray');plt.show()
-        # plt.savefig('temp\\frame' + str(self.c), dpi=150, cmap='gray')
-        return si
+        return sob
 
+    def _calc_si(self, frame: np.ndarray) -> (float, np.ndarray):
+        """
+        Calcule Spatial Information for a video frame.
+        :param frame: A luma video frame in numpy ndarray format.
+        :return: spatial information and sobel frame.
+        """
+        sobel = self.sobel(frame)
+        si = sobel.std()
+        self.si.append(si)
+        return si, sobel
 
-class Ti(Features):
-    def __init__(self):
-        super().__init__()
-        self.previous_frame = None
-
-    def calc(self, frame):
-        self.frame_counter += 1
-        ti = 0
-
-        if self.previous_frame is not None:
+    def _calc_ti(self, frame: np.ndarray) -> (float, np.ndarray):
+        """
+        Calcule Temporal Information for a video frame. If is a first frame,
+        the information is zero.
+        :param frame: A luma video frame in numpy ndarray format.
+        :return: Temporal information and diference frame. If first frame the
+        diference is zero array on same shape of frame.
+        """
+        if self.previous_frame:
             difference = frame - self.previous_frame
             ti = difference.std()
-            # plt.imshow(np.abs(difference), cmap='gray');plt.show()
-            # plt.savefig('temp\\frame' + str(self.frame_counter) + '_diff', dpi=150, cmap='gray')
+        else:
+            difference = np.zeros(frame.shape)
+            ti = 0.0
 
-        # plt.imshow(frame, cmap='gray');plt.show()
-        # plt.savefig('temp\\frame' + str(self.frame_counter), dpi=150, cmap='gray')
-
-        self.values.append(ti)
+        self.ti.append(ti)
         self.previous_frame = frame
-        return ti
 
+        return ti, difference
 
-def multi_plot(input_glob='*.csv'):
-    names = {}
-    for x in glob.glob(input_glob):
-        name = x.replace(f'.{input_glob.split(".")[-1]}', '').split(f'{sl}')[-1]
-        tmp = pd.read_csv(x, delimiter=',')
+    def calc_siti(self, verbose=False, n_frames=None):
+        """
+        Start the calculation of the SI and TI. The values is stored in the 'si'
+        and 'ti' attributes for each frame.
 
-        names[name] = dict(si_med=tmp['si'].median(),
-                           ti_med=tmp['ti'].median(),
-                           yerr=np.array([[np.percentile(tmp['ti'], 25)], [np.percentile(tmp['ti'], 75)]]),
-                           xerr=np.array([[np.percentile(tmp['si'], 25)], [np.percentile(tmp['si'], 75)]]))
+        :param verbose: Show calculation frame-by-frame.
+        :param n_frames: Frames to be processed.
 
-    fig, ax_med = plt.subplots(1, 1, figsize=(10, 5), tight_layout=True, dpi=200)
+        :return: None
+        """
 
-    for name in names:
-        yerr = names[name]['yerr']
-        xerr = names[name]['xerr']
-        x = names[name]['si_med']
-        y = names[name]['ti_med']
-        ax_med.errorbar(x=x, y=y, label=name, yerr=np.abs(yerr - y), xerr=np.abs(xerr - x), fmt='o')
+        vreader = skvideo.io.vreader(fname=self.filename, as_grey=True,
+                                     inputdict=self.inputdict)
 
-    ax_med.set_xlabel('SI')
-    ax_med.set_ylabel('TI')
-    ax_med.set_title('SI/TI - Median Values')
-    ax_med.legend(loc='upper left', bbox_to_anchor=(1.01, 0.99))
+        for self.frame_counter, frame in enumerate(vreader, 1):
+            if self.frame_counter > n_frames:
+                break
+            width = frame.shape[1]
+            height = frame.shape[2]
+            frame = frame.reshape((width, height)).astype('float32')
+            value_si, sobel = self._calc_si(frame)
+            value_ti, difference = self._calc_ti(frame)
+            if verbose:
+                print(f"{self.frame_counter:04}, "
+                      f"si={value_si:05.3f}, ti={value_ti:05.3f}")
+            else:
+                print('.', end='', flush=True)
 
-    # plt.show()
-    fig.savefig(f'graphs{sl}scatter-err_siti')
+    def save_siti(self, filename=None):
+        if not filename:
+            filename, ext = os.path.splitext(self.filename)
+            filename = filename + '.csv'
 
+        df = pd.DataFrame({'si': self.si, 'ti': self.ti},
+                          index=range(len(self.si)))
+        df.to_csv(f'{filename}.csv', index_label='frame')
 
-def single_plot(input_glob='*.csv'):
-    for x in glob.glob(input_glob):
-        name = x.replace(f'.{input_glob.split(".")[-1]}', '')
-        tmp = pd.read_csv(x, delimiter=',')
+    def save_stats(self, filename=None):
+        if not filename:
+            filename, ext = os.path.splitext(self.filename)
+            filename = filename + '.csv'
 
-        fig, ax = plt.subplots(figsize=(9, 5), tight_layout=True, dpi=300)
-        ax.plot(tmp['si'], label='si')
-        ax.plot(tmp['ti'], label='ti')
-        ax.set_xlabel('Frame')
-        ax.set_ylabel('Information')
-        ax.set_title(name)
-        ax.legend(loc='upper left', bbox_to_anchor=(1.01, 0.99))
-        # plt.show()
-        fig.savefig(name)
+        stats = dict(si_average=f'{np.average(self.si):05.3f}',
+                     si_std=f'{np.std(self.si):05.3f}',
+                     si_0q=f'{np.quantile(self.si, 0.00):05.3f}',
+                     si_1q=f'{np.quantile(self.si, 0.25):05.3f}',
+                     si_2q=f'{np.quantile(self.si, 0.50):05.3f}',
+                     si_3q=f'{np.quantile(self.si, 0.75):05.3f}',
+                     si_4q=f'{np.quantile(self.si, 1.00):05.3f}',
+                     ti_average=f'{np.average(self.ti):05.3f}',
+                     ti_std=f'{np.std(self.ti):05.3f}',
+                     ti_0q=f'{np.quantile(self.ti, 0.00):05.3f}',
+                     ti_1q=f'{np.quantile(self.ti, 0.25):05.3f}',
+                     ti_2q=f'{np.quantile(self.ti, 0.50):05.3f}',
+                     ti_3q=f'{np.quantile(self.ti, 0.75):05.3f}',
+                     ti_4q=f'{np.quantile(self.ti, 1.00):05.3f}')
+
+        name = os.path.basename(filename)
+        df = pd.DataFrame({name: stats}, index=range(len(self.si)))
+        df.to_csv(f'{filename}', index_label='Stats')
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Calculate SI/TI according ITU-T P.910',
-                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("filename", type=str, help="Video to analyze")
-    parser.add_argument('--size', type=str, default='0x0', help='Dimensions in pixels')
-    parser.add_argument('--num_frames', type=int, default=0, help='Process number of frames')
-    parser.add_argument("--output", type=str, default="", help="Output CSV for si ti report")
-    parser.add_argument("--form", type=str, default="", help="Force ffmpeg video format")
-    parser.add_argument("--pix_fmt", type=str, default="yuv420p", help="force ffmpeg pixel format")
+    parser = argparse.ArgumentParser(
+        description='Calculate SI/TI according ITU-T P.910, but using median instead of the maximum value.',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('video', type=str, help="Video to analyze")
+    parser.add_argument('--num_frames', type=int, default=0,
+                        help='Process number of frames')
+    parser.add_argument('--output', type=str, default="",
+                        help="Output CSV for si ti report and statistics")
+    parser.add_argument('--size', type=str, default='0x0',
+                        help='Dimensions in pixels')
+    parser.add_argument('--form', type=str, default="",
+                        help="Force ffmpeg video format")
+    parser.add_argument("--pix_fmt", type=str, default="yuv420p",
+                        help="force ffmpeg pixel format")
     params = vars(parser.parse_args())
 
-    siti(**params)
-    multi_plot(params['output'])
+    video = params['video']
+    size = params['size']
+    num_frames = params['size']
+    output = params['size']
+    form = params['size']
+    pix_fmt = params['pix_fmt']
+
+    siti = SiTi(video, size)
+    siti.calc_siti()
