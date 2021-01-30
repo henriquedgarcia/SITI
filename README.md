@@ -1,6 +1,5 @@
-
 # SITI
-Python script to calculate SI/TI according recomendation ITU-T P.910.
+Python script to calculate SI/TI similar to ITU-T P.910.
 
 This script was based on a [SITI](https://github.com/Telecommunication-Telemedia-Assessment/SITI) script from Telecommunication-Telemedia-Assessmentthat Github Group
 
@@ -9,15 +8,11 @@ This script was based on a [SITI](https://github.com/Telecommunication-Telemedia
 - Pandas
 - SkVideo
 - Scipy
-- Matplotlib (only to debug 
 
 **Features:**
-- Calculations use float32 arrays and output is rounded to 4 decimal places.
-- Uses ffmpeg as backend (Supports most encodings).
+- Calculations using median instead maximum value.
+- Uses ffmpeg as backend (Supports most encodings and command line params).
 - Saves output as CSV.
 - Calculations are done considering only the luminance, as recommended by the ITU-T.
-- Suport ffmpeg parameters
+- Calcule some statistics about the SITI distribution along the video.
 - Ability to be called by the command line or imported by another script.
-
-
-
