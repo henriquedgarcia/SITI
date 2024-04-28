@@ -189,9 +189,9 @@ if __name__ == "__main__":
 
     video = params['video']
     size = params['size']
-    num_frames = params['size']
-    output = params['size']
-    form = params['size']
+    num_frames = params['num_frames']
+    output = params['output']
+    form = params['form']
     pix_fmt = params['pix_fmt']
 
     siti = SiTi(video, size)
