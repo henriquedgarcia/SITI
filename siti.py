@@ -51,9 +51,6 @@ class SiTi:
         self.frame_counter = 0
         self.stats = defaultdict(list)
 
-        self.calc_siti()
-
-
     def calc_siti(self):
         """
         Start the calculation of the SI and TI. The values are stored in the 'si'
@@ -66,14 +63,16 @@ class SiTi:
             if self.frame_counter > self.n_frames:
                 break
 
-            value_si, sobel = self._calc_si(frame)
-            value_ti, difference = self._calc_ti(frame)
+            self.si.append(self._calc_si(frame))
+            self.ti.append(self._calc_ti(frame))
 
             if self.verbose:
                 print(f"{self.frame_counter:04}, "
-                      f"si={value_si:05.3f}, ti={value_ti:05.3f}")
+                      f"si={self.si[-1]:05.3f}, ti={self.ti[-1]:05.3f}")
             else:
                 print('.', end='', flush=True)
+
+        return self.si, self.ti
 
     def _iter_video(self):
         cap = cv2.VideoCapture(f'{self.video}')
@@ -103,10 +102,8 @@ class SiTi:
         :return: spatial information and sobel frame.
         """
         sobel = self._sobel(frame)
-        # cv2.imshow('frame', sobel)
         si = sobel.std()
-        self.si.append(si)
-        return si, sobel
+        return si
 
     def _calc_ti(self, frame: np.ndarray) -> (float, np.ndarray):
         """
@@ -120,13 +117,11 @@ class SiTi:
             difference = frame - self.previous_frame
             ti = difference.std()
         else:
-            difference = np.zeros(frame.shape)
             ti = 0.0
 
-        self.ti.append(ti)
         self.previous_frame = frame
 
-        return ti, difference
+        return ti
 
     def save_siti(self):
         filename = self.video.with_suffix('.csv')
@@ -188,5 +183,6 @@ if __name__ == "__main__":
     params = vars(parser.parse_args())
 
     siti = SiTi(**params)
+    siti.calc_siti()
     siti.save_siti()
     siti.save_stats()
