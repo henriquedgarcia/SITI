@@ -63,15 +63,21 @@ class SiTi:
             if self.frame_counter > self.n_frames:
                 break
 
-            self.si.append(self._calc_si(frame))
-            self.ti.append(self._calc_ti(frame))
+            si = self._calc_si(frame)
+            self.si.append(si)
+
+            ti = self._calc_ti(frame)
+            if ti != float('inf'):
+                self.ti.append(ti)
 
             if self.verbose:
                 print(f"{self.frame_counter:04}, "
-                      f"si={self.si[-1]:05.3f}, ti={self.ti[-1]:05.3f}")
+                      f"si={si:05.3f}, ti={ti:05.3f}")
             else:
-                print('.', end='', flush=True)
+                if self.frame_counter % 10 == 0:
+                    print('.', end='', flush=True)
 
+        self.create_stats()
         return self.si, self.ti
 
     def _iter_video(self):
@@ -117,7 +123,7 @@ class SiTi:
             difference = frame - self.previous_frame
             ti = difference.std()
         else:
-            ti = 0.0
+            ti = float('inf')
 
         self.previous_frame = frame
 
@@ -125,7 +131,7 @@ class SiTi:
 
     def save_siti(self):
         filename = self.video.with_suffix('.csv')
-        df = pd.DataFrame({'si': self.si, 'ti': self.ti},
+        df = pd.DataFrame({'si': self.si, 'ti': [0]+self.ti},
                           index=range(len(self.si)))
         df.to_csv(f'{filename}', index_label='frame')
 
@@ -186,3 +192,8 @@ if __name__ == "__main__":
     siti.calc_siti()
     siti.save_siti()
     siti.save_stats()
+    print('###########################')
+    print('######### RESULTS #########')
+    print('###########################')
+    for stat, (value,) in siti.stats.items():
+        print(f'\t{stat}:\t{value}')
