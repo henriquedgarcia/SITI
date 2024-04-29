@@ -49,10 +49,10 @@ class SiTi:
         self.ti = []
         self.previous_frame = None
         self.frame_counter = 0
+        self.stats = defaultdict(list)
 
         self.calc_siti()
-        self.save_siti()
-        self.save_stats()
+
 
     def calc_siti(self):
         """
@@ -130,30 +130,29 @@ class SiTi:
 
     def save_siti(self):
         filename = self.video.with_suffix('.csv')
-
         df = pd.DataFrame({'si': self.si, 'ti': self.ti},
                           index=range(len(self.si)))
         df.to_csv(f'{filename}', index_label='frame')
 
+    def create_stats(self):
+        self.stats['si_average'].append(f'{np.average(self.si):05.3f}')
+        self.stats['si_std'].append(f'{np.std(self.si):05.3f}')
+        self.stats['si_0q'].append(f'{np.quantile(self.si, 0.00):05.3f}')
+        self.stats['si_1q'].append(f'{np.quantile(self.si, 0.25):05.3f}')
+        self.stats['si_2q'].append(f'{np.quantile(self.si, 0.50):05.3f}')
+        self.stats['si_3q'].append(f'{np.quantile(self.si, 0.75):05.3f}')
+        self.stats['si_4q'].append(f'{np.quantile(self.si, 1.00):05.3f}')
+
+        self.stats['ti_average'].append(f'{np.average(self.ti):05.3f}')
+        self.stats['ti_std'].append(f'{np.std(self.ti):05.3f}')
+        self.stats['ti_0q'].append(f'{np.quantile(self.ti, 0.00):05.3f}')
+        self.stats['ti_1q'].append(f'{np.quantile(self.ti, 0.25):05.3f}')
+        self.stats['ti_2q'].append(f'{np.quantile(self.ti, 0.50):05.3f}')
+        self.stats['ti_3q'].append(f'{np.quantile(self.ti, 0.75):05.3f}')
+        self.stats['ti_4q'].append(f'{np.quantile(self.ti, 1.00):05.3f}')
+
     def save_stats(self):
-        stats = defaultdict(list)
-        stats['si_average'].append(f'{np.average(self.si):05.3f}')
-        stats['si_std'].append(f'{np.std(self.si):05.3f}')
-        stats['si_0q'].append(f'{np.quantile(self.si, 0.00):05.3f}')
-        stats['si_1q'].append(f'{np.quantile(self.si, 0.25):05.3f}')
-        stats['si_2q'].append(f'{np.quantile(self.si, 0.50):05.3f}')
-        stats['si_3q'].append(f'{np.quantile(self.si, 0.75):05.3f}')
-        stats['si_4q'].append(f'{np.quantile(self.si, 1.00):05.3f}')
-
-        stats['ti_average'].append(f'{np.average(self.ti):05.3f}')
-        stats['ti_std'].append(f'{np.std(self.ti):05.3f}')
-        stats['ti_0q'].append(f'{np.quantile(self.ti, 0.00):05.3f}')
-        stats['ti_1q'].append(f'{np.quantile(self.ti, 0.25):05.3f}')
-        stats['ti_2q'].append(f'{np.quantile(self.ti, 0.50):05.3f}')
-        stats['ti_3q'].append(f'{np.quantile(self.ti, 0.75):05.3f}')
-        stats['ti_4q'].append(f'{np.quantile(self.ti, 1.00):05.3f}')
-
-        pd.DataFrame(stats).to_csv(f'{self.output}', index=False)
+        pd.DataFrame(self.stats).to_csv(f'{self.output}', index=False)
 
 
 if __name__ == "__main__":
@@ -188,4 +187,6 @@ if __name__ == "__main__":
 
     params = vars(parser.parse_args())
 
-    SiTi(**params)
+    siti = SiTi(**params)
+    siti.save_siti()
+    siti.save_stats()
